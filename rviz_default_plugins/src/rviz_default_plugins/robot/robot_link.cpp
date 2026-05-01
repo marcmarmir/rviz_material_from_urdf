@@ -40,6 +40,7 @@
 #include <OgreEntity.h>
 #include <OgreMaterial.h>
 #include <OgreMaterialManager.h>
+#include <OgreSubMesh.h>
 #include <OgreRibbonTrail.h>
 #include <OgreSceneManager.h>
 #include <OgreSceneNode.h>
@@ -742,6 +743,7 @@ void RobotLink::refreshCollisionMaterials()
   for (auto & collision_mesh : collision_meshes_) {
     assignMaterialsToEntities(urdf_link_, "", collision_mesh, true);
   }
+  updateAlpha();
 }
 
 void RobotLink::assignMaterialsToEntities(
@@ -792,9 +794,23 @@ void RobotLink::assignMaterialsToEntities(
     if (sub_material_name == "BaseWhite" || sub_material_name == "BaseWhiteNoLighting") {
       sub->setMaterialName(default_material_name_);
     } else {
+      Ogre::MaterialPtr source_for_clone = sub->getMaterial();
+      std::string clone_name_key = sub_material_name;
+      if (collision_geometry) {
+        const Ogre::SubMesh * submesh = sub->getSubMesh();
+        const std::string & template_mat_name = submesh->getMaterialName();
+        if (!template_mat_name.empty()) {
+          Ogre::MaterialPtr tmpl = Ogre::MaterialManager::getSingleton().getByName(
+            template_mat_name, entity->getMesh()->getGroup());
+          if (tmpl) {
+            source_for_clone = tmpl;
+            clone_name_key = template_mat_name;
+          }
+        }
+      }
       std::string sub_cloned_name =
-        sub_material_name + "_" + std::to_string(material_count++) + "Robot";
-      sub->getMaterial()->clone(sub_cloned_name);
+        clone_name_key + "_" + std::to_string(material_count++) + "Robot";
+      source_for_clone->clone(sub_cloned_name);
       sub->setMaterialName(sub_cloned_name);
     }
 

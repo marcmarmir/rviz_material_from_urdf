@@ -304,6 +304,7 @@ void RobotModelDisplay::display_urdf_content()
   robot_->setCollisionTintEnabled(tint_collision_enabled_property_->getValue().toBool());
   robot_->setCollisionTintColor(collision_tint_color_property_->getOgreColor());
   robot_->load(descr);
+  updateAlpha();
   std::stringstream ss;
   for (const auto & name_link_pair : robot_->getLinks()) {
     const std::string err = name_link_pair.second->getGeometryErrors();
