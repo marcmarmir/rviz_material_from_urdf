@@ -36,6 +36,7 @@
 
 #include <OgreVector.h>
 #include <OgreQuaternion.h>
+#include <OgreColourValue.h>
 #include <OgreAny.h>
 
 #include "urdf/model.h"  // can be replaced later by urdf_model/types.h
@@ -187,6 +188,12 @@ public:
   void setAlpha(float a);
   float getAlpha() {return alpha_;}
 
+  /** When enabled (and per-link color is not set), collision geometry uses collision_tint_color_. */
+  void setCollisionTintEnabled(bool enabled);
+  bool getCollisionTintEnabled() const;
+  void setCollisionTintColor(const Ogre::ColourValue & color);
+  const Ogre::ColourValue & getCollisionTintColor() const;
+
   RobotLink * getRootLink() {return root_link_;}
   RobotLink * getLink(const std::string & name);
   RobotJoint * getJoint(const std::string & name);
@@ -334,8 +341,12 @@ protected:
 
   std::string name_;
   float alpha_;
+  bool collision_tint_enabled_{false};
+  Ogre::ColourValue collision_tint_color_{1.0f, 0.5f, 0.0f, 1.0f};
 
 private:
+  void notifyCollisionTintChanged();
+
   void createLinkProperties(
     const urdf::ModelInterface & urdf,
     bool visual,

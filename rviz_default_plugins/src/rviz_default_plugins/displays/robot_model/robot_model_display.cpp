@@ -35,6 +35,7 @@
 #include <OgreSceneManager.h>
 #include <OgreSceneNode.h>
 
+#include <QColor>
 #include <QFile>  // NOLINT cpplint cannot handle include order here
 
 #include "urdf/model.h"
@@ -42,6 +43,7 @@
 #include "tf2_ros/transform_listener.h"
 
 #include "rviz_common/display_context.hpp"
+#include "rviz_common/properties/color_property.hpp"
 #include "rviz_common/properties/enum_property.hpp"
 #include "rviz_common/properties/file_picker_property.hpp"
 #include "rviz_common/properties/float_property.hpp"
@@ -57,6 +59,7 @@ namespace rviz_default_plugins
 namespace displays
 {
 
+using rviz_common::properties::ColorProperty;
 using rviz_common::properties::EnumProperty;
 using rviz_common::properties::FilePickerProperty;
 using rviz_common::properties::FloatProperty;
@@ -120,6 +123,16 @@ RobotModelDisplay::RobotModelDisplay()
   alpha_property_->setMin(0.0);
   alpha_property_->setMax(1.0);
 
+  tint_collision_enabled_property_ = new Property(
+    "TintCollision", false,
+    "When enabled, collision geometry is shaded with CollisionTintColor instead of mesh defaults.",
+    this, SLOT(updateCollisionTint()));
+
+  collision_tint_color_property_ = new ColorProperty(
+    "CollisionTintColor", QColor(255, 128, 0),
+    "Diffuse color for collision geometry when TintCollision is enabled.",
+    this, SLOT(updateCollisionTint()));
+
   description_source_property_ = new EnumProperty(
     "Description Source", "Topic",
     "Source to get the robot description from.", this, SLOT(updatePropertyVisibility()));
@@ -155,6 +168,7 @@ void RobotModelDisplay::onInitialize()
   updateVisualVisible();
   updateCollisionVisible();
   updateAlpha();
+  updateCollisionTint();
   updatePropertyVisibility();
 
   transformer_guard_->initialize(context_);
@@ -163,6 +177,13 @@ void RobotModelDisplay::onInitialize()
 void RobotModelDisplay::updateAlpha()
 {
   robot_->setAlpha(alpha_property_->getFloat());
+  context_->queueRender();
+}
+
+void RobotModelDisplay::updateCollisionTint()
+{
+  robot_->setCollisionTintEnabled(tint_collision_enabled_property_->getValue().toBool());
+  robot_->setCollisionTintColor(collision_tint_color_property_->getOgreColor());
   context_->queueRender();
 }
 
@@ -280,6 +301,8 @@ void RobotModelDisplay::display_urdf_content()
   }
 
   setStatus(StatusProperty::Ok, "URDF", "URDF parsed OK");
+  robot_->setCollisionTintEnabled(tint_collision_enabled_property_->getValue().toBool());
+  robot_->setCollisionTintColor(collision_tint_color_property_->getOgreColor());
   robot_->load(descr);
   std::stringstream ss;
   for (const auto & name_link_pair : robot_->getLinks()) {

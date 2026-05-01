@@ -224,6 +224,14 @@ RobotLink::RobotLink(
   color_material_ =
     rviz_rendering::MaterialManager::createMaterialWithLighting(color_material_name);
 
+  static int collision_tint_mat_count = 1;
+  std::string collision_tint_name =
+    "robot collision tint material " + std::to_string(collision_tint_mat_count++);
+  collision_tint_material_ =
+    rviz_rendering::MaterialManager::createMaterialWithLighting(collision_tint_name);
+  urdf_link_ = link;
+  syncCollisionTintMaterialFromRobot();
+
   // create the ogre objects to display
   if (visual) {
     createVisual(link);
@@ -465,6 +473,9 @@ void RobotLink::unsetColor()
 {
   using_color_ = false;
   setToNormalMaterial();
+  if (robot_->getCollisionTintEnabled()) {
+    refreshCollisionMaterials();
+  }
 }
 
 bool RobotLink::setSelectable(bool selectable)
@@ -528,7 +539,11 @@ void RobotLink::updateAlpha()
       material->setDepthWriteEnabled(true);
     } else {
       Ogre::ColourValue color = material->getTechnique(0)->getPass(0)->getDiffuse();
-      color.a = robot_alpha_ * material_alpha_ * link_alpha;
+      if (collision_tint_sub_materials_.count(material.get()) > 0) {
+        color.a = robot_alpha_ * link_alpha * robot_->getCollisionTintColor().a;
+      } else {
+        color.a = robot_alpha_ * material_alpha_ * link_alpha;
+      }
       material->setDiffuse(color);
 
       rviz_rendering::MaterialManager::enableAlphaBlending(material, color.a);
@@ -540,6 +555,11 @@ void RobotLink::updateAlpha()
   color_material_->setDiffuse(color);
 
   rviz_rendering::MaterialManager::enableAlphaBlending(color_material_, color.a);
+
+  Ogre::ColourValue ct = collision_tint_material_->getTechnique(0)->getPass(0)->getDiffuse();
+  ct.a = robot_alpha_ * link_alpha * robot_->getCollisionTintColor().a;
+  collision_tint_material_->setDiffuse(ct);
+  rviz_rendering::MaterialManager::enableAlphaBlending(collision_tint_material_, ct.a);
 }
 
 void RobotLink::updateTrail()
@@ -596,7 +616,8 @@ Ogre::Entity * RobotLink::createEntityForGeometryElement(
   const urdf::Geometry & geom,
   const urdf::Pose & origin,
   const std::string material_name,
-  Ogre::SceneNode * scene_node)
+  Ogre::SceneNode * scene_node,
+  const bool collision_geometry)
 {
   Ogre::Entity * entity = nullptr;  // default in case nothing works.
   Ogre::SceneNode * offset_node = scene_node->createChildSceneNode();
@@ -700,17 +721,51 @@ Ogre::Entity * RobotLink::createEntityForGeometryElement(
     offset_node->setPosition(offset_position);
     offset_node->setOrientation(offset_orientation);
 
-    assignMaterialsToEntities(link, material_name, entity);
+    assignMaterialsToEntities(link, material_name, entity, collision_geometry);
   }
   return entity;
+}
+
+void RobotLink::syncCollisionTintMaterialFromRobot()
+{
+  const Ogre::ColourValue & c = robot_->getCollisionTintColor();
+  collision_tint_material_->getTechnique(0)->setAmbient(0.5f * c.r, 0.5f * c.g, 0.5f * c.b);
+  collision_tint_material_->getTechnique(0)->setDiffuse(c.r, c.g, c.b, c.a);
+}
+
+void RobotLink::refreshCollisionMaterials()
+{
+  if (!collision_node_ || collision_meshes_.empty() || !urdf_link_ || using_color_) {
+    return;
+  }
+  collision_tint_sub_materials_.clear();
+  for (auto & collision_mesh : collision_meshes_) {
+    assignMaterialsToEntities(urdf_link_, "", collision_mesh, true);
+  }
 }
 
 void RobotLink::assignMaterialsToEntities(
   const urdf::LinkConstSharedPtr & link,
   const std::string & material_name,
-  const Ogre::Entity * entity)
+  const Ogre::Entity * entity,
+  const bool collision_geometry)
 {
   static int material_count = 0;
+
+  if (collision_geometry && robot_->getCollisionTintEnabled()) {
+    syncCollisionTintMaterialFromRobot();
+    for (uint32_t i = 0; i < entity->getNumSubEntities(); ++i) {
+      Ogre::SubEntity * sub = entity->getSubEntity(i);
+      std::string cloned_name =
+        collision_tint_material_->getName() + "_" + std::to_string(material_count++) + "Robot";
+      Ogre::MaterialPtr sub_mat = collision_tint_material_->clone(cloned_name);
+      sub->setMaterialName(sub_mat->getName());
+      materials_[sub] = sub_mat;
+      collision_tint_sub_materials_.insert(sub_mat.get());
+    }
+    return;
+  }
+
   if (default_material_name_.empty()) {
     default_material_ = getMaterialForLink(link);
 
@@ -737,9 +792,6 @@ void RobotLink::assignMaterialsToEntities(
     if (sub_material_name == "BaseWhite" || sub_material_name == "BaseWhiteNoLighting") {
       sub->setMaterialName(default_material_name_);
     } else {
-      // Need to clone here due to how selection works.
-      // Once selection id is done per object and not per material,
-      // this can go away
       std::string sub_cloned_name =
         sub_material_name + "_" + std::to_string(material_count++) + "Robot";
       sub->getMaterial()->clone(sub_cloned_name);
@@ -753,7 +805,8 @@ void RobotLink::assignMaterialsToEntities(
 Ogre::MaterialPtr RobotLink::getMaterialForLink(
   const urdf::LinkConstSharedPtr & link, const std::string material_name)
 {
-  if (!link->visual || !link->visual->material) {
+  urdf::VisualSharedPtr visual = getVisualWithMaterial(link, material_name);
+  if (!visual || !visual->material) {
     return Ogre::MaterialManager::getSingleton().getByName("RVIZ/ShadedRed");
   }
 
@@ -762,8 +815,6 @@ Ogre::MaterialPtr RobotLink::getMaterialForLink(
 
   auto material_for_link =
     rviz_rendering::MaterialManager::createMaterialWithShadowsAndLighting(link_material_name);
-
-  urdf::VisualSharedPtr visual = getVisualWithMaterial(link, material_name);
 
   if (visual->material->texture_filename.empty()) {
     const urdf::Color & color = visual->material->color;
@@ -837,7 +888,7 @@ void RobotLink::loadMaterialFromTexture(
 void RobotLink::createCollision(const urdf::LinkConstSharedPtr & link)
 {
   createVisualizable<urdf::CollisionSharedPtr>(
-    link, collision_meshes_, link->collision_array, link->collision, collision_node_);
+    link, collision_meshes_, link->collision_array, link->collision, collision_node_, true);
 
   collision_node_->setVisible(getEnabled());
 }
@@ -845,7 +896,7 @@ void RobotLink::createCollision(const urdf::LinkConstSharedPtr & link)
 void RobotLink::createVisual(const urdf::LinkConstSharedPtr & link)
 {
   createVisualizable<urdf::VisualSharedPtr>(
-    link, visual_meshes_, link->visual_array, link->visual, visual_node_);
+    link, visual_meshes_, link->visual_array, link->visual, visual_node_, false);
 
   visual_node_->setVisible(getEnabled());
 }

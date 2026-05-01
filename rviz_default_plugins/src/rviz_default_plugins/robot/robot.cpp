@@ -345,6 +345,35 @@ void Robot::setAlpha(float a)
   }
 }
 
+void Robot::setCollisionTintEnabled(bool enabled)
+{
+  collision_tint_enabled_ = enabled;
+  notifyCollisionTintChanged();
+}
+
+bool Robot::getCollisionTintEnabled() const
+{
+  return collision_tint_enabled_;
+}
+
+void Robot::setCollisionTintColor(const Ogre::ColourValue & color)
+{
+  collision_tint_color_ = color;
+  notifyCollisionTintChanged();
+}
+
+const Ogre::ColourValue & Robot::getCollisionTintColor() const
+{
+  return collision_tint_color_;
+}
+
+void Robot::notifyCollisionTintChanged()
+{
+  for (const auto & entry : links_) {
+    entry.second->refreshCollisionMaterials();
+  }
+}
+
 void Robot::setPosition(const Ogre::Vector3 & position)
 {
   root_visual_node_->setPosition(position);

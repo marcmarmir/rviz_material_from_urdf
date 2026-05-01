@@ -34,6 +34,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #ifndef Q_MOC_RUN
@@ -157,6 +158,9 @@ public:
   std::vector<Ogre::Entity *> getVisualMeshes() {return visual_meshes_;}
   std::vector<Ogre::Entity *> getCollisionMeshes() {return collision_meshes_;}
 
+  /** Reassign collision mesh materials from Robot collision tint settings (and URDF when tint off). */
+  void refreshCollisionMaterials();
+
 public Q_SLOTS:
   /** @brief Update the visibility of the link elements: visual mesh,
    * collision mesh, trail, and axes.
@@ -177,11 +181,14 @@ private:
   Ogre::Entity * createEntityForGeometryElement(
     const urdf::LinkConstSharedPtr & link,
     const urdf::Geometry & geom, const urdf::Pose & origin,
-    std::string material_name, Ogre::SceneNode * scene_node);
+    std::string material_name, Ogre::SceneNode * scene_node,
+    bool collision_geometry = false);
   void assignMaterialsToEntities(
     const urdf::LinkConstSharedPtr & link,
     const std::string & material_name,
-    const Ogre::Entity * entity);
+    const Ogre::Entity * entity,
+    bool collision_geometry = false);
+  void syncCollisionTintMaterialFromRobot();
   Ogre::MaterialPtr getMaterialForLink(
     const urdf::LinkConstSharedPtr & link, std::string material_name = "");
   urdf::VisualSharedPtr getVisualWithMaterial(
@@ -204,7 +211,8 @@ private:
     std::vector<Ogre::Entity *> & meshes_vector,
     const std::vector<T> & visualizables_array,
     const T & visualizable_element,
-    Ogre::SceneNode * scene_node)
+    Ogre::SceneNode * scene_node,
+    bool collision_geometry)
   {
     bool valid_visualizable_found = false;
 
@@ -212,7 +220,12 @@ private:
       T link_visual_element = vector_element;
       if (link_visual_element && link_visual_element->geometry) {
         Ogre::Entity * mesh = createEntityForGeometryElement(
-          link, *link_visual_element->geometry, link_visual_element->origin, "", scene_node);
+          link,
+          *link_visual_element->geometry,
+          link_visual_element->origin,
+          "",
+          scene_node,
+          collision_geometry);
         if (mesh) {
           meshes_vector.push_back(mesh);
           valid_visualizable_found = true;
@@ -222,7 +235,12 @@ private:
 
     if (!valid_visualizable_found && visualizable_element && visualizable_element->geometry) {
       Ogre::Entity * mesh = createEntityForGeometryElement(
-        link, *visualizable_element->geometry, visualizable_element->origin, "", scene_node);
+        link,
+        *visualizable_element->geometry,
+        visualizable_element->origin,
+        "",
+        scene_node,
+        collision_geometry);
       if (mesh) {
         meshes_vector.push_back(mesh);
       }
@@ -243,6 +261,7 @@ protected:
 private:
   typedef std::map<Ogre::SubEntity *, Ogre::MaterialPtr> M_SubEntityToMaterial;
   M_SubEntityToMaterial materials_;
+  urdf::LinkConstSharedPtr urdf_link_;
   Ogre::MaterialPtr default_material_;
   std::string default_material_name_;
 
@@ -271,7 +290,10 @@ private:
   RobotLinkSelectionHandlerPtr selection_handler_;
 
   Ogre::MaterialPtr color_material_;
+  Ogre::MaterialPtr collision_tint_material_;
   bool using_color_;
+
+  std::unordered_set<Ogre::Material *> collision_tint_sub_materials_;
 
   std::string error;
 
