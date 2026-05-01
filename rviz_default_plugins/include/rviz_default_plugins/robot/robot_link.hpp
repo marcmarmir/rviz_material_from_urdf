@@ -158,7 +158,6 @@ public:
   std::vector<Ogre::Entity *> getVisualMeshes() {return visual_meshes_;}
   std::vector<Ogre::Entity *> getCollisionMeshes() {return collision_meshes_;}
 
-  /** Reassign collision mesh materials from Robot collision tint settings (and URDF when tint off). */
   void refreshCollisionMaterials();
 
 public Q_SLOTS:
@@ -261,7 +260,6 @@ protected:
 private:
   typedef std::map<Ogre::SubEntity *, Ogre::MaterialPtr> M_SubEntityToMaterial;
   M_SubEntityToMaterial materials_;
-  urdf::LinkConstSharedPtr urdf_link_;
   Ogre::MaterialPtr default_material_;
   std::string default_material_name_;
 
@@ -291,9 +289,10 @@ private:
 
   Ogre::MaterialPtr color_material_;
   Ogre::MaterialPtr collision_tint_material_;
-  bool using_color_;
-
   std::unordered_set<Ogre::Material *> collision_tint_sub_materials_;
+  std::map<Ogre::SubEntity *, std::string> original_collision_material_names_;
+
+  bool using_color_;
 
   std::string error;
 

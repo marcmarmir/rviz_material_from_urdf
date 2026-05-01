@@ -188,7 +188,6 @@ public:
   void setAlpha(float a);
   float getAlpha() {return alpha_;}
 
-  /** When enabled (and per-link color is not set), collision geometry uses collision_tint_color_. */
   void setCollisionTintEnabled(bool enabled);
   bool getCollisionTintEnabled() const;
   void setCollisionTintColor(const Ogre::ColourValue & color);
