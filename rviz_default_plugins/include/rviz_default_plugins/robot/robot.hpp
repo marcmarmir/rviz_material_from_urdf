@@ -187,6 +187,10 @@ public:
   void setAlpha(float a);
   float getAlpha() {return alpha_;}
 
+  /** When true, visual mesh subentities use URDF <visual><material> instead of Assimp materials. */
+  void setUseUrdfMeshMaterials(bool use);
+  bool getUseUrdfMeshMaterials() const;
+
   RobotLink * getRootLink() {return root_link_;}
   RobotLink * getLink(const std::string & name);
   RobotJoint * getJoint(const std::string & name);
@@ -334,6 +338,7 @@ protected:
 
   std::string name_;
   float alpha_;
+  bool use_urdf_mesh_materials_{false};
 
 private:
   void createLinkProperties(

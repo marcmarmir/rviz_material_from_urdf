@@ -120,6 +120,12 @@ RobotModelDisplay::RobotModelDisplay()
   alpha_property_->setMin(0.0);
   alpha_property_->setMax(1.0);
 
+  use_urdf_mesh_materials_property_ = new Property(
+    "UseURDFMeshMaterials", false,
+    "When enabled, each visual mesh uses the URDF visual material for all submeshes "
+    "instead of only replacing BaseWhite materials.",
+    this, SLOT(updateUseUrdfMeshMaterials()));
+
   description_source_property_ = new EnumProperty(
     "Description Source", "Topic",
     "Source to get the robot description from.", this, SLOT(updatePropertyVisibility()));
@@ -155,6 +161,7 @@ void RobotModelDisplay::onInitialize()
   updateVisualVisible();
   updateCollisionVisible();
   updateAlpha();
+  updateUseUrdfMeshMaterials();
   updatePropertyVisibility();
 
   transformer_guard_->initialize(context_);
@@ -164,6 +171,17 @@ void RobotModelDisplay::updateAlpha()
 {
   robot_->setAlpha(alpha_property_->getFloat());
   context_->queueRender();
+}
+
+void RobotModelDisplay::updateUseUrdfMeshMaterials()
+{
+  robot_->setUseUrdfMeshMaterials(
+    use_urdf_mesh_materials_property_->getValue().toBool());
+  if (!robot_description_.empty()) {
+    display_urdf_content();
+  } else {
+    context_->queueRender();
+  }
 }
 
 void RobotModelDisplay::updatePropertyVisibility()
@@ -280,6 +298,8 @@ void RobotModelDisplay::display_urdf_content()
   }
 
   setStatus(StatusProperty::Ok, "URDF", "URDF parsed OK");
+  robot_->setUseUrdfMeshMaterials(
+    use_urdf_mesh_materials_property_->getValue().toBool());
   robot_->load(descr);
   std::stringstream ss;
   for (const auto & name_link_pair : robot_->getLinks()) {

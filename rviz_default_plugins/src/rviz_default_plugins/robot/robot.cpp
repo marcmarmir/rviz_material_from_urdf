@@ -130,6 +130,16 @@ Robot::Robot(
     this);
 }
 
+void Robot::setUseUrdfMeshMaterials(bool use)
+{
+  use_urdf_mesh_materials_ = use;
+}
+
+bool Robot::getUseUrdfMeshMaterials() const
+{
+  return use_urdf_mesh_materials_;
+}
+
 Robot::~Robot()
 {
   clear();

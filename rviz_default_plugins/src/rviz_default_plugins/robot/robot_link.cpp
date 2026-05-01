@@ -596,7 +596,8 @@ Ogre::Entity * RobotLink::createEntityForGeometryElement(
   const urdf::Geometry & geom,
   const urdf::Pose & origin,
   const std::string material_name,
-  Ogre::SceneNode * scene_node)
+  Ogre::SceneNode * scene_node,
+  const bool use_urdf_mesh_materials)
 {
   Ogre::Entity * entity = nullptr;  // default in case nothing works.
   Ogre::SceneNode * offset_node = scene_node->createChildSceneNode();
@@ -700,7 +701,7 @@ Ogre::Entity * RobotLink::createEntityForGeometryElement(
     offset_node->setPosition(offset_position);
     offset_node->setOrientation(offset_orientation);
 
-    assignMaterialsToEntities(link, material_name, entity);
+    assignMaterialsToEntities(link, material_name, entity, use_urdf_mesh_materials);
   }
   return entity;
 }
@@ -708,7 +709,8 @@ Ogre::Entity * RobotLink::createEntityForGeometryElement(
 void RobotLink::assignMaterialsToEntities(
   const urdf::LinkConstSharedPtr & link,
   const std::string & material_name,
-  const Ogre::Entity * entity)
+  const Ogre::Entity * entity,
+  const bool use_urdf_mesh_materials)
 {
   static int material_count = 0;
   if (default_material_name_.empty()) {
@@ -720,6 +722,10 @@ void RobotLink::assignMaterialsToEntities(
     default_material_ = default_material_->clone(cloned_name);
     default_material_name_ = default_material_->getName();
   }
+
+  urdf::VisualSharedPtr resolved_visual = getVisualWithMaterial(link, material_name);
+  const bool use_urdf_mesh_materials_for_submeshes =
+    use_urdf_mesh_materials && resolved_visual && resolved_visual->material;
 
   for (uint32_t i = 0; i < entity->getNumSubEntities(); ++i) {
     default_material_ = getMaterialForLink(link, material_name);
@@ -734,7 +740,9 @@ void RobotLink::assignMaterialsToEntities(
     Ogre::SubEntity * sub = entity->getSubEntity(i);
     const std::string & sub_material_name = sub->getMaterialName();
 
-    if (sub_material_name == "BaseWhite" || sub_material_name == "BaseWhiteNoLighting") {
+    if (use_urdf_mesh_materials_for_submeshes ||
+      sub_material_name == "BaseWhite" || sub_material_name == "BaseWhiteNoLighting")
+    {
       sub->setMaterialName(default_material_name_);
     } else {
       // Need to clone here due to how selection works.
@@ -753,7 +761,8 @@ void RobotLink::assignMaterialsToEntities(
 Ogre::MaterialPtr RobotLink::getMaterialForLink(
   const urdf::LinkConstSharedPtr & link, const std::string material_name)
 {
-  if (!link->visual || !link->visual->material) {
+  urdf::VisualSharedPtr visual = getVisualWithMaterial(link, material_name);
+  if (!visual || !visual->material) {
     return Ogre::MaterialManager::getSingleton().getByName("RVIZ/ShadedRed");
   }
 
@@ -762,8 +771,6 @@ Ogre::MaterialPtr RobotLink::getMaterialForLink(
 
   auto material_for_link =
     rviz_rendering::MaterialManager::createMaterialWithShadowsAndLighting(link_material_name);
-
-  urdf::VisualSharedPtr visual = getVisualWithMaterial(link, material_name);
 
   if (visual->material->texture_filename.empty()) {
     const urdf::Color & color = visual->material->color;
@@ -834,9 +841,96 @@ void RobotLink::loadMaterialFromTexture(
   tex_unit->setTextureName(filename);
 }
 
+void RobotLink::createVisualGeometryFromArray(
+  const urdf::LinkConstSharedPtr & link,
+  std::vector<Ogre::Entity *> & meshes_vector,
+  const std::vector<urdf::VisualSharedPtr> & elements,
+  const urdf::VisualSharedPtr & fallback_element,
+  Ogre::SceneNode * scene_node,
+  const bool use_urdf_mesh_materials)
+{
+  bool valid_visualizable_found = false;
+
+  for (const auto & vector_element : elements) {
+    const urdf::VisualSharedPtr link_visual_element = vector_element;
+    if (link_visual_element && link_visual_element->geometry) {
+      const bool use_urdf_mesh_materials_for_mesh =
+        use_urdf_mesh_materials &&
+        (link_visual_element->geometry->type == urdf::Geometry::MESH);
+      Ogre::Entity * mesh = createEntityForGeometryElement(
+        link,
+        *link_visual_element->geometry,
+        link_visual_element->origin,
+        link_visual_element->material_name,
+        scene_node,
+        use_urdf_mesh_materials_for_mesh);
+      if (mesh) {
+        meshes_vector.push_back(mesh);
+        valid_visualizable_found = true;
+      }
+    }
+  }
+
+  if (!valid_visualizable_found && fallback_element && fallback_element->geometry) {
+    const bool use_urdf_mesh_materials_for_mesh =
+      use_urdf_mesh_materials &&
+      (fallback_element->geometry->type == urdf::Geometry::MESH);
+    Ogre::Entity * mesh = createEntityForGeometryElement(
+      link,
+      *fallback_element->geometry,
+      fallback_element->origin,
+      fallback_element->material_name,
+      scene_node,
+      use_urdf_mesh_materials_for_mesh);
+    if (mesh) {
+      meshes_vector.push_back(mesh);
+    }
+  }
+}
+
+void RobotLink::createCollisionGeometryFromArray(
+  const urdf::LinkConstSharedPtr & link,
+  std::vector<Ogre::Entity *> & meshes_vector,
+  const std::vector<urdf::CollisionSharedPtr> & elements,
+  const urdf::CollisionSharedPtr & fallback_element,
+  Ogre::SceneNode * scene_node)
+{
+  bool valid_visualizable_found = false;
+
+  for (const auto & vector_element : elements) {
+    const urdf::CollisionSharedPtr link_collision_element = vector_element;
+    if (link_collision_element && link_collision_element->geometry) {
+      Ogre::Entity * mesh = createEntityForGeometryElement(
+        link,
+        *link_collision_element->geometry,
+        link_collision_element->origin,
+        "",
+        scene_node,
+        false);
+      if (mesh) {
+        meshes_vector.push_back(mesh);
+        valid_visualizable_found = true;
+      }
+    }
+  }
+
+  if (!valid_visualizable_found && fallback_element && fallback_element->geometry) {
+    Ogre::Entity * mesh = createEntityForGeometryElement(
+      link,
+      *fallback_element->geometry,
+      fallback_element->origin,
+      "",
+      scene_node,
+      false);
+    if (mesh) {
+      meshes_vector.push_back(mesh);
+    }
+  }
+}
+
 void RobotLink::createCollision(const urdf::LinkConstSharedPtr & link)
 {
-  createVisualizable<urdf::CollisionSharedPtr>(
+  createCollisionGeometryFromArray(
     link, collision_meshes_, link->collision_array, link->collision, collision_node_);
 
   collision_node_->setVisible(getEnabled());
@@ -844,8 +938,13 @@ void RobotLink::createCollision(const urdf::LinkConstSharedPtr & link)
 
 void RobotLink::createVisual(const urdf::LinkConstSharedPtr & link)
 {
-  createVisualizable<urdf::VisualSharedPtr>(
-    link, visual_meshes_, link->visual_array, link->visual, visual_node_);
+  createVisualGeometryFromArray(
+    link,
+    visual_meshes_,
+    link->visual_array,
+    link->visual,
+    visual_node_,
+    robot_->getUseUrdfMeshMaterials());
 
   visual_node_->setVisible(getEnabled());
 }
