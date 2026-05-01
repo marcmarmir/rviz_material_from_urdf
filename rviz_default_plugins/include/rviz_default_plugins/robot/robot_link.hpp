@@ -180,11 +180,13 @@ private:
   Ogre::Entity * createEntityForGeometryElement(
     const urdf::LinkConstSharedPtr & link,
     const urdf::Geometry & geom, const urdf::Pose & origin,
-    std::string material_name, Ogre::SceneNode * scene_node);
+    std::string material_name, Ogre::SceneNode * scene_node,
+    bool force_urdf_material_for_mesh = false);
   void assignMaterialsToEntities(
     const urdf::LinkConstSharedPtr & link,
     const std::string & material_name,
-    const Ogre::Entity * entity);
+    const Ogre::Entity * entity,
+    bool force_urdf_material_for_mesh = false);
   Ogre::MaterialPtr getMaterialForLink(
     const urdf::LinkConstSharedPtr & link, std::string material_name = "");
   urdf::VisualSharedPtr getVisualWithMaterial(
@@ -201,36 +203,20 @@ private:
   void createInertia(const urdf::LinkConstSharedPtr & link);
   void createSelection();
 
-  template<typename T>
-  void createVisualizable(
+  void createVisualGeometryFromArray(
     const urdf::LinkConstSharedPtr & link,
     std::vector<Ogre::Entity *> & meshes_vector,
-    const std::vector<T> & visualizables_array,
-    const T & visualizable_element,
-    Ogre::SceneNode * scene_node)
-  {
-    bool valid_visualizable_found = false;
+    const std::vector<urdf::VisualSharedPtr> & elements,
+    const urdf::VisualSharedPtr & fallback_element,
+    Ogre::SceneNode * scene_node,
+    bool urdf_mesh_material_override);
 
-    for (const auto & vector_element : visualizables_array) {
-      T link_visual_element = vector_element;
-      if (link_visual_element && link_visual_element->geometry) {
-        Ogre::Entity * mesh = createEntityForGeometryElement(
-          link, *link_visual_element->geometry, link_visual_element->origin, "", scene_node);
-        if (mesh) {
-          meshes_vector.push_back(mesh);
-          valid_visualizable_found = true;
-        }
-      }
-    }
-
-    if (!valid_visualizable_found && visualizable_element && visualizable_element->geometry) {
-      Ogre::Entity * mesh = createEntityForGeometryElement(
-        link, *visualizable_element->geometry, visualizable_element->origin, "", scene_node);
-      if (mesh) {
-        meshes_vector.push_back(mesh);
-      }
-    }
-  }
+  void createCollisionGeometryFromArray(
+    const urdf::LinkConstSharedPtr & link,
+    std::vector<Ogre::Entity *> & meshes_vector,
+    const std::vector<urdf::CollisionSharedPtr> & elements,
+    const urdf::CollisionSharedPtr & fallback_element,
+    Ogre::SceneNode * scene_node);
 
 protected:
   Ogre::SceneManager * scene_manager_;

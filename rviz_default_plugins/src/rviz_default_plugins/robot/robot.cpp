@@ -131,6 +131,16 @@ Robot::Robot(
     this);
 }
 
+void Robot::setOverrideVisualMeshMaterialsWithUrdf(bool override_use)
+{
+  override_visual_mesh_materials_with_urdf_ = override_use;
+}
+
+bool Robot::getOverrideVisualMeshMaterialsWithUrdf() const
+{
+  return override_visual_mesh_materials_with_urdf_;
+}
+
 Robot::~Robot()
 {
   clear();

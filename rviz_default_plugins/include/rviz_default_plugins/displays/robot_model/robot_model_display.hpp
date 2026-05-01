@@ -60,6 +60,7 @@ namespace rviz_common
 {
 namespace properties
 {
+class BoolProperty;
 class EnumProperty;
 class FilePickerProperty;
 class FloatProperty;
@@ -110,6 +111,7 @@ private Q_SLOTS:
   void updateRobotDescription();
   void updateMassVisible();
   void updateInertiaVisible();
+  void updateOverrideVisualMeshMaterials();
 
   void updateTopic() override;
 
@@ -140,6 +142,7 @@ protected:
 
   rviz_common::properties::Property * visual_enabled_property_;
   rviz_common::properties::Property * collision_enabled_property_;
+  rviz_common::properties::BoolProperty * override_visual_mesh_materials_with_urdf_property_;
   rviz_common::properties::FloatProperty * update_rate_property_;
   rviz_common::properties::EnumProperty * description_source_property_;
   rviz_common::properties::FilePickerProperty * description_file_property_;

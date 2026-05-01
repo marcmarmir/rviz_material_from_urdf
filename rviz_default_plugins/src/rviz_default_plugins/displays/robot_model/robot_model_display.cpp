@@ -43,6 +43,7 @@
 #include "tf2_ros/transform_listener.hpp"
 
 #include "rviz_common/display_context.hpp"
+#include "rviz_common/properties/bool_property.hpp"
 #include "rviz_common/properties/enum_property.hpp"
 #include "rviz_common/properties/file_picker_property.hpp"
 #include "rviz_common/properties/float_property.hpp"
@@ -60,6 +61,7 @@ namespace rviz_default_plugins
 namespace displays
 {
 
+using rviz_common::properties::BoolProperty;
 using rviz_common::properties::EnumProperty;
 using rviz_common::properties::FilePickerProperty;
 using rviz_common::properties::FloatProperty;
@@ -97,6 +99,14 @@ RobotModelDisplay::RobotModelDisplay()
     "Collision Enabled", false,
     "Whether to display the collision representation of the robot.",
     this, SLOT(updateCollisionVisible()));
+
+  override_visual_mesh_materials_with_urdf_property_ = new BoolProperty(
+    "Override Mesh Materials with URDF",
+    false,
+    "When enabled, visual mesh submeshes use the URDF <visual> material (if present) "
+    "instead of materials loaded from the mesh file (e.g. via Assimp).",
+    this,
+    SLOT(updateOverrideVisualMeshMaterials()));
 
   mass_properties_ = new Property("Mass Properties", QVariant(), "", this);
   mass_enabled_property_ = new Property(
@@ -211,6 +221,16 @@ void RobotModelDisplay::updateCollisionVisible()
   context_->queueRender();
 }
 
+void RobotModelDisplay::updateOverrideVisualMeshMaterials()
+{
+  robot_->setOverrideVisualMeshMaterialsWithUrdf(
+    override_visual_mesh_materials_with_urdf_property_->getBool());
+  if (!robot_description_.empty()) {
+    display_urdf_content();
+  }
+  context_->queueRender();
+}
+
 void RobotModelDisplay::updateTfPrefix()
 {
   clearStatuses();
@@ -286,6 +306,8 @@ void RobotModelDisplay::display_urdf_content()
   }
 
   setStatus(StatusProperty::Ok, "URDF", "URDF parsed OK");
+  robot_->setOverrideVisualMeshMaterialsWithUrdf(
+    override_visual_mesh_materials_with_urdf_property_->getBool());
   robot_->load(descr);
   std::stringstream ss;
   for (const auto & name_link_pair : robot_->getLinks()) {
