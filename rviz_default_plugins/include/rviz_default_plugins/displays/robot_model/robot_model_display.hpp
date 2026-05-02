@@ -59,6 +59,7 @@ namespace rviz_common
 {
 namespace properties
 {
+class BoolProperty;
 class ColorProperty;
 class EnumProperty;
 class FilePickerProperty;
@@ -106,7 +107,7 @@ private Q_SLOTS:
   void updateCollisionVisible();
   void updateTfPrefix();
   void updateAlpha();
-  void updateCollisionTint();
+  void updateCollisionColorOverride();
   void updatePropertyVisibility();
   void updateRobotDescription();
   void updateMassVisible();
@@ -141,12 +142,12 @@ protected:
 
   rviz_common::properties::Property * visual_enabled_property_;
   rviz_common::properties::Property * collision_enabled_property_;
+  rviz_common::properties::BoolProperty * collision_color_override_enabled_property_;
+  rviz_common::properties::ColorProperty * collision_color_property_;
   rviz_common::properties::FloatProperty * update_rate_property_;
   rviz_common::properties::EnumProperty * description_source_property_;
   rviz_common::properties::FilePickerProperty * description_file_property_;
   rviz_common::properties::FloatProperty * alpha_property_;
-  rviz_common::properties::Property * tint_collision_enabled_property_;
-  rviz_common::properties::ColorProperty * collision_tint_color_property_;
   rviz_common::properties::StringProperty * tf_prefix_property_;
 
   rviz_common::properties::Property * mass_properties_;

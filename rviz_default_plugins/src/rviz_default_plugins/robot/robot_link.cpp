@@ -225,13 +225,6 @@ RobotLink::RobotLink(
   color_material_ =
     rviz_rendering::MaterialManager::createMaterialWithLighting(color_material_name);
 
-  static int collision_tint_mat_count = 1;
-  std::string collision_tint_name =
-    "robot collision tint material " + std::to_string(collision_tint_mat_count++);
-  collision_tint_material_ =
-    rviz_rendering::MaterialManager::createMaterialWithLighting(collision_tint_name);
-  syncCollisionTintMaterialFromRobot();
-
   // create the ogre objects to display
   if (visual) {
     createVisual(link);
@@ -351,13 +344,12 @@ void RobotLink::createDescription(const urdf::LinkConstSharedPtr & link)
 
 RobotLink::~RobotLink()
 {
-  original_collision_material_names_.clear();
-
   for (auto & visual_mesh : visual_meshes_) {
     scene_manager_->destroyEntity(visual_mesh);
   }
 
   for (auto & collision_mesh : collision_meshes_) {
+    eraseCollisionMaterialMapEntriesForEntity(collision_mesh);
     scene_manager_->destroyEntity(collision_mesh);
   }
 
@@ -475,7 +467,7 @@ void RobotLink::unsetColor()
 {
   using_color_ = false;
   setToNormalMaterial();
-  if (robot_->getCollisionTintEnabled()) {
+  if (robot_->getCollisionColorOverrideEnabled()) {
     refreshCollisionMaterials();
   }
 }
@@ -541,11 +533,7 @@ void RobotLink::updateAlpha()
       material->setDepthWriteEnabled(true);
     } else {
       Ogre::ColourValue color = material->getTechnique(0)->getPass(0)->getDiffuse();
-      if (collision_tint_sub_materials_.count(material.get()) > 0) {
-        color.a = robot_alpha_ * link_alpha * robot_->getCollisionTintColor().a;
-      } else {
-        color.a = robot_alpha_ * material_alpha_ * link_alpha;
-      }
+      color.a = robot_alpha_ * material_alpha_ * link_alpha;
       material->setDiffuse(color);
 
       rviz_rendering::MaterialManager::enableAlphaBlending(material, color.a);
@@ -557,11 +545,6 @@ void RobotLink::updateAlpha()
   color_material_->setDiffuse(color);
 
   rviz_rendering::MaterialManager::enableAlphaBlending(color_material_, color.a);
-
-  Ogre::ColourValue ct = collision_tint_material_->getTechnique(0)->getPass(0)->getDiffuse();
-  ct.a = robot_alpha_ * link_alpha * robot_->getCollisionTintColor().a;
-  collision_tint_material_->setDiffuse(ct);
-  rviz_rendering::MaterialManager::enableAlphaBlending(collision_tint_material_, ct.a);
 }
 
 void RobotLink::updateTrail()
@@ -723,55 +706,98 @@ Ogre::Entity * RobotLink::createEntityForGeometryElement(
     offset_node->setPosition(offset_position);
     offset_node->setOrientation(offset_orientation);
 
-    assignMaterialsToEntities(link, material_name, entity, collision_geometry);
+    assignNormalMaterialsToEntities(link, material_name, entity, collision_geometry);
+    if (collision_geometry) {
+      cacheOriginalCollisionMaterials(entity);
+      if (robot_->getCollisionColorOverrideEnabled()) {
+        applyCollisionColorOverride(entity);
+      }
+    }
   }
   return entity;
 }
 
-void RobotLink::syncCollisionTintMaterialFromRobot()
+void RobotLink::cacheOriginalCollisionMaterials(Ogre::Entity * collision_entity)
 {
-  const Ogre::ColourValue & c = robot_->getCollisionTintColor();
-  collision_tint_material_->getTechnique(0)->setAmbient(0.5f * c.r, 0.5f * c.g, 0.5f * c.b);
-  collision_tint_material_->getTechnique(0)->setDiffuse(c.r, c.g, c.b, c.a);
+  for (uint32_t i = 0; i < collision_entity->getNumSubEntities(); ++i) {
+    Ogre::SubEntity * sub = collision_entity->getSubEntity(i);
+    if (original_collision_materials_.find(sub) == original_collision_materials_.end()) {
+      original_collision_materials_[sub] = sub->getMaterial();
+    }
+  }
+}
+
+void RobotLink::applyCollisionColorOverride(Ogre::Entity * collision_entity)
+{
+  const Ogre::ColourValue & color = robot_->getCollisionColorOverrideColor();
+  for (uint32_t i = 0; i < collision_entity->getNumSubEntities(); ++i) {
+    Ogre::SubEntity * sub = collision_entity->getSubEntity(i);
+    Ogre::MaterialPtr & mat = collision_color_override_materials_[sub];
+    if (!mat) {
+      static int override_mat_count = 0;
+      const std::string mat_name =
+        "robot collision color override " + std::to_string(override_mat_count++);
+      mat = rviz_rendering::MaterialManager::createMaterialWithLighting(mat_name);
+    }
+    mat->getTechnique(0)->setAmbient(0.5f * color.r, 0.5f * color.g, 0.5f * color.b);
+    mat->getTechnique(0)->setDiffuse(color.r, color.g, color.b, color.a);
+    materials_[sub] = mat;
+    if (!using_color_) {
+      sub->setMaterial(mat);
+    }
+  }
+}
+
+void RobotLink::restoreOriginalCollisionMaterials(Ogre::Entity * collision_entity)
+{
+  for (uint32_t i = 0; i < collision_entity->getNumSubEntities(); ++i) {
+    Ogre::SubEntity * sub = collision_entity->getSubEntity(i);
+    const auto orig_it = original_collision_materials_.find(sub);
+    if (orig_it == original_collision_materials_.end() || !orig_it->second) {
+      continue;
+    }
+    materials_[sub] = orig_it->second;
+    if (!using_color_) {
+      sub->setMaterial(orig_it->second);
+    }
+  }
+}
+
+void RobotLink::eraseCollisionMaterialMapEntriesForEntity(Ogre::Entity * entity)
+{
+  if (!entity) {
+    return;
+  }
+
+  for (uint32_t i = 0; i < entity->getNumSubEntities(); ++i) {
+    Ogre::SubEntity * sub = entity->getSubEntity(i);
+    collision_color_override_materials_.erase(sub);
+    original_collision_materials_.erase(sub);
+    materials_.erase(sub);
+  }
 }
 
 void RobotLink::refreshCollisionMaterials()
 {
-  if (!collision_node_ || collision_meshes_.empty() || using_color_) {
+  if (!collision_node_ || collision_meshes_.empty()) {
     return;
   }
-  collision_tint_sub_materials_.clear();
 
-  if (robot_->getCollisionTintEnabled()) {
+  if (robot_->getCollisionColorOverrideEnabled()) {
     for (auto & collision_mesh : collision_meshes_) {
-      assignMaterialsToEntities(urdf::LinkConstSharedPtr(), "", collision_mesh, true);
+      cacheOriginalCollisionMaterials(collision_mesh);
+      applyCollisionColorOverride(collision_mesh);
     }
   } else {
     for (auto & collision_mesh : collision_meshes_) {
-      const uint32_t n = collision_mesh->getNumSubEntities();
-      bool all_cached = n > 0;
-      for (uint32_t i = 0; i < n && all_cached; ++i) {
-        if (original_collision_material_names_.find(collision_mesh->getSubEntity(i)) ==
-          original_collision_material_names_.end())
-        {
-          all_cached = false;
-        }
-      }
-      if (all_cached) {
-        for (uint32_t i = 0; i < n; ++i) {
-          Ogre::SubEntity * sub = collision_mesh->getSubEntity(i);
-          sub->setMaterialName(original_collision_material_names_[sub]);
-          materials_[sub] = sub->getMaterial();
-        }
-      } else {
-        assignMaterialsToEntities(urdf::LinkConstSharedPtr(), "", collision_mesh, true);
-      }
+      restoreOriginalCollisionMaterials(collision_mesh);
     }
   }
+
   updateAlpha();
 }
 
-void RobotLink::assignMaterialsToEntities(
+void RobotLink::assignNormalMaterialsToEntities(
   const urdf::LinkConstSharedPtr & link,
   const std::string & material_name,
   const Ogre::Entity * entity,
@@ -779,29 +805,8 @@ void RobotLink::assignMaterialsToEntities(
 {
   static int material_count = 0;
 
-  if (collision_geometry && robot_->getCollisionTintEnabled()) {
-    syncCollisionTintMaterialFromRobot();
-    for (uint32_t i = 0; i < entity->getNumSubEntities(); ++i) {
-      Ogre::SubEntity * sub = entity->getSubEntity(i);
-      if (original_collision_material_names_.find(sub) == original_collision_material_names_.end()) {
-        original_collision_material_names_[sub] = sub->getMaterialName();
-      }
-      std::string cloned_name =
-        collision_tint_material_->getName() + "_" + std::to_string(material_count++) + "Robot";
-      Ogre::MaterialPtr sub_mat = collision_tint_material_->clone(cloned_name);
-      sub->setMaterialName(sub_mat->getName());
-      materials_[sub] = sub_mat;
-      collision_tint_sub_materials_.insert(sub_mat.get());
-    }
-    return;
-  }
-
   if (default_material_name_.empty()) {
-    if (link) {
-      default_material_ = getMaterialForLink(link);
-    } else {
-      default_material_ = Ogre::MaterialManager::getSingleton().getByName("RVIZ/ShadedRed");
-    }
+    default_material_ = getMaterialForLink(link);
 
     std::string cloned_name =
       default_material_->getName() + "_" + std::to_string(material_count++) + "Robot";
@@ -811,14 +816,12 @@ void RobotLink::assignMaterialsToEntities(
   }
 
   for (uint32_t i = 0; i < entity->getNumSubEntities(); ++i) {
-    if (link) {
-      default_material_ = getMaterialForLink(link, material_name);
-      std::string cloned_name =
-        default_material_->getName() + "_" + std::to_string(material_count++) + "Robot";
+    default_material_ = getMaterialForLink(link, material_name);
+    std::string cloned_name =
+      default_material_->getName() + "_" + std::to_string(material_count++) + "Robot";
 
-      default_material_ = default_material_->clone(cloned_name);
-      default_material_name_ = default_material_->getName();
-    }
+    default_material_ = default_material_->clone(cloned_name);
+    default_material_name_ = default_material_->getName();
 
     // Assign materials only if the submesh does not have one already
 
@@ -849,20 +852,13 @@ void RobotLink::assignMaterialsToEntities(
     }
 
     materials_[sub] = sub->getMaterial();
-    if (collision_geometry) {
-      original_collision_material_names_[sub] = sub->getMaterialName();
-    }
   }
 }
 
 Ogre::MaterialPtr RobotLink::getMaterialForLink(
   const urdf::LinkConstSharedPtr & link, const std::string material_name)
 {
-  if (!link) {
-    return Ogre::MaterialManager::getSingleton().getByName("RVIZ/ShadedRed");
-  }
-  urdf::VisualSharedPtr visual = getVisualWithMaterial(link, material_name);
-  if (!visual || !visual->material) {
+  if (!link->visual || !link->visual->material) {
     return Ogre::MaterialManager::getSingleton().getByName("RVIZ/ShadedRed");
   }
 
@@ -871,6 +867,8 @@ Ogre::MaterialPtr RobotLink::getMaterialForLink(
 
   auto material_for_link =
     rviz_rendering::MaterialManager::createMaterialWithShadowsAndLighting(link_material_name);
+
+  urdf::VisualSharedPtr visual = getVisualWithMaterial(link, material_name);
 
   if (visual->material->texture_filename.empty()) {
     const urdf::Color & color = visual->material->color;
@@ -888,9 +886,6 @@ Ogre::MaterialPtr RobotLink::getMaterialForLink(
 urdf::VisualSharedPtr RobotLink::getVisualWithMaterial(
   const urdf::LinkConstSharedPtr & link, const std::string & material_name) const
 {
-  if (!link) {
-    return urdf::VisualSharedPtr();
-  }
   urdf::VisualSharedPtr visual = link->visual;
   for (const auto & visual_array_element : link->visual_array) {
     if (visual_array_element &&

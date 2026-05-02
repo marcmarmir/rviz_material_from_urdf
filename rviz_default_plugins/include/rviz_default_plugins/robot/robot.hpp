@@ -188,10 +188,9 @@ public:
   void setAlpha(float a);
   float getAlpha() {return alpha_;}
 
-  void setCollisionTintEnabled(bool enabled);
-  bool getCollisionTintEnabled() const;
-  void setCollisionTintColor(const Ogre::ColourValue & color);
-  const Ogre::ColourValue & getCollisionTintColor() const;
+  void setCollisionColorOverride(bool enabled, const Ogre::ColourValue & color);
+  bool getCollisionColorOverrideEnabled() const;
+  const Ogre::ColourValue & getCollisionColorOverrideColor() const;
 
   RobotLink * getRootLink() {return root_link_;}
   RobotLink * getLink(const std::string & name);
@@ -340,11 +339,11 @@ protected:
 
   std::string name_;
   float alpha_;
-  bool collision_tint_enabled_{false};
-  Ogre::ColourValue collision_tint_color_{1.0f, 0.5f, 0.0f, 1.0f};
+  bool collision_color_override_enabled_{false};
+  Ogre::ColourValue collision_color_override_color_{1.0f, 0.5f, 0.0f, 1.0f};
 
 private:
-  void notifyCollisionTintChanged();
+  void notifyCollisionColorOverrideChanged();
 
   void createLinkProperties(
     const urdf::ModelInterface & urdf,

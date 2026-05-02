@@ -43,6 +43,7 @@
 #include "tf2_ros/transform_listener.h"
 
 #include "rviz_common/display_context.hpp"
+#include "rviz_common/properties/bool_property.hpp"
 #include "rviz_common/properties/color_property.hpp"
 #include "rviz_common/properties/enum_property.hpp"
 #include "rviz_common/properties/file_picker_property.hpp"
@@ -59,6 +60,7 @@ namespace rviz_default_plugins
 namespace displays
 {
 
+using rviz_common::properties::BoolProperty;
 using rviz_common::properties::ColorProperty;
 using rviz_common::properties::EnumProperty;
 using rviz_common::properties::FilePickerProperty;
@@ -98,6 +100,16 @@ RobotModelDisplay::RobotModelDisplay()
     "Whether to display the collision representation of the robot.",
     this, SLOT(updateCollisionVisible()));
 
+  collision_color_override_enabled_property_ = new BoolProperty(
+    "Override Color", false,
+    "Whether to use Collision Color instead of mesh defaults for collision representation.",
+    collision_enabled_property_, SLOT(updateCollisionColorOverride()), this);
+
+  collision_color_property_ = new ColorProperty(
+    "Collision Color", QColor(255, 128, 0),
+    "Color for collision representation when Override Color is enabled.",
+    collision_enabled_property_, SLOT(updateCollisionColorOverride()), this);
+
   mass_properties_ = new Property("Mass Properties", QVariant(), "", this);
   mass_enabled_property_ = new Property(
     "Mass", false,
@@ -122,16 +134,6 @@ RobotModelDisplay::RobotModelDisplay()
     this, SLOT(updateAlpha()));
   alpha_property_->setMin(0.0);
   alpha_property_->setMax(1.0);
-
-  tint_collision_enabled_property_ = new Property(
-    "TintCollision", false,
-    "When enabled, collision geometry is shaded with CollisionTintColor instead of mesh defaults.",
-    this, SLOT(updateCollisionTint()));
-
-  collision_tint_color_property_ = new ColorProperty(
-    "CollisionTintColor", QColor(255, 128, 0),
-    "Diffuse color for collision geometry when TintCollision is enabled.",
-    this, SLOT(updateCollisionTint()));
 
   description_source_property_ = new EnumProperty(
     "Description Source", "Topic",
@@ -168,7 +170,7 @@ void RobotModelDisplay::onInitialize()
   updateVisualVisible();
   updateCollisionVisible();
   updateAlpha();
-  updateCollisionTint();
+  updateCollisionColorOverride();
   updatePropertyVisibility();
 
   transformer_guard_->initialize(context_);
@@ -180,10 +182,10 @@ void RobotModelDisplay::updateAlpha()
   context_->queueRender();
 }
 
-void RobotModelDisplay::updateCollisionTint()
+void RobotModelDisplay::updateCollisionColorOverride()
 {
-  robot_->setCollisionTintEnabled(tint_collision_enabled_property_->getValue().toBool());
-  robot_->setCollisionTintColor(collision_tint_color_property_->getOgreColor());
+  const bool enabled = collision_color_override_enabled_property_->getBool();
+  robot_->setCollisionColorOverride(enabled, collision_color_property_->getOgreColor());
   context_->queueRender();
 }
 
@@ -301,8 +303,9 @@ void RobotModelDisplay::display_urdf_content()
   }
 
   setStatus(StatusProperty::Ok, "URDF", "URDF parsed OK");
-  robot_->setCollisionTintEnabled(tint_collision_enabled_property_->getValue().toBool());
-  robot_->setCollisionTintColor(collision_tint_color_property_->getOgreColor());
+  robot_->setCollisionColorOverride(
+    collision_color_override_enabled_property_->getBool(),
+    collision_color_property_->getOgreColor());
   robot_->load(descr);
   updateAlpha();
   std::stringstream ss;

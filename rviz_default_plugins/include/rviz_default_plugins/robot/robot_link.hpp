@@ -34,7 +34,6 @@
 #include <map>
 #include <memory>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 #ifndef Q_MOC_RUN
@@ -182,12 +181,15 @@ private:
     const urdf::Geometry & geom, const urdf::Pose & origin,
     std::string material_name, Ogre::SceneNode * scene_node,
     bool collision_geometry = false);
-  void assignMaterialsToEntities(
+  void assignNormalMaterialsToEntities(
     const urdf::LinkConstSharedPtr & link,
     const std::string & material_name,
     const Ogre::Entity * entity,
     bool collision_geometry = false);
-  void syncCollisionTintMaterialFromRobot();
+  void cacheOriginalCollisionMaterials(Ogre::Entity * collision_entity);
+  void applyCollisionColorOverride(Ogre::Entity * collision_entity);
+  void restoreOriginalCollisionMaterials(Ogre::Entity * collision_entity);
+  void eraseCollisionMaterialMapEntriesForEntity(Ogre::Entity * entity);
   Ogre::MaterialPtr getMaterialForLink(
     const urdf::LinkConstSharedPtr & link, std::string material_name = "");
   urdf::VisualSharedPtr getVisualWithMaterial(
@@ -288,9 +290,8 @@ private:
   RobotLinkSelectionHandlerPtr selection_handler_;
 
   Ogre::MaterialPtr color_material_;
-  Ogre::MaterialPtr collision_tint_material_;
-  std::unordered_set<Ogre::Material *> collision_tint_sub_materials_;
-  std::map<Ogre::SubEntity *, std::string> original_collision_material_names_;
+  M_SubEntityToMaterial collision_color_override_materials_;
+  M_SubEntityToMaterial original_collision_materials_;
 
   bool using_color_;
 

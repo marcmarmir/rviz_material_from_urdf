@@ -345,29 +345,33 @@ void Robot::setAlpha(float a)
   }
 }
 
-void Robot::setCollisionTintEnabled(bool enabled)
+void Robot::setCollisionColorOverride(bool enabled, const Ogre::ColourValue & color)
 {
-  collision_tint_enabled_ = enabled;
-  notifyCollisionTintChanged();
+  const bool enabled_changed = collision_color_override_enabled_ != enabled;
+  const bool color_changed = !(
+    collision_color_override_color_.r == color.r &&
+    collision_color_override_color_.g == color.g &&
+    collision_color_override_color_.b == color.b &&
+    collision_color_override_color_.a == color.a);
+  if (!enabled_changed && !color_changed) {
+    return;
+  }
+  collision_color_override_enabled_ = enabled;
+  collision_color_override_color_ = color;
+  notifyCollisionColorOverrideChanged();
 }
 
-bool Robot::getCollisionTintEnabled() const
+bool Robot::getCollisionColorOverrideEnabled() const
 {
-  return collision_tint_enabled_;
+  return collision_color_override_enabled_;
 }
 
-void Robot::setCollisionTintColor(const Ogre::ColourValue & color)
+const Ogre::ColourValue & Robot::getCollisionColorOverrideColor() const
 {
-  collision_tint_color_ = color;
-  notifyCollisionTintChanged();
+  return collision_color_override_color_;
 }
 
-const Ogre::ColourValue & Robot::getCollisionTintColor() const
-{
-  return collision_tint_color_;
-}
-
-void Robot::notifyCollisionTintChanged()
+void Robot::notifyCollisionColorOverrideChanged()
 {
   for (const auto & entry : links_) {
     entry.second->refreshCollisionMaterials();
